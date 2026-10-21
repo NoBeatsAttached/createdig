@@ -40,7 +40,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%}
 #slap .era{font-size:calc(var(--slapFs)*.42);color:#1f5f9a;line-height:1.1}
 #slap .by{margin:1.1em auto 0;display:flex;flex-direction:row;align-items:center;position:relative;font-size:var(--vfd1);padding:.6em 1.2em;width:max-content}
 
-/* NOW FLIPPING tape, top-left of the hopper */
+/* ACTIVE MOVE tape, top-left of the hopper */
 #badge{position:absolute;opacity:0;transition:opacity .4s;transform:rotate(-1.5deg);pointer-events:none}
 #badge.on{opacity:1}
 #badge .k{font-size:var(--fsxs);color:#7a7f87;letter-spacing:.06em;margin-bottom:.3em}
@@ -68,7 +68,7 @@ body.preview #help{display:block}
   <canvas id="bg"></canvas>
   <canvas id="fg"></canvas>
   <div class="vfd" id="vfd"><div class="l1" id="v1">CRATE DIG</div><div class="l2" id="v2">WAITING ON THE HOST</div></div>
-  <div id="badge"><div class="k">NOW FLIPPING</div><div class="tape" id="bN"></div><div class="b" id="bB"></div></div>
+  <div id="badge"><div class="k">ACTIVE MOVE</div><div class="tape" id="bN"></div><div class="b" id="bB"></div></div>
   <div id="slap"><div class="wrap"><div class="tape"><div class="nm" id="sN"></div><div class="era" id="sE"></div></div></div><div class="vfd by" id="sB"></div></div>
   <div class="vfd" id="board"></div>
 </div>
@@ -111,10 +111,14 @@ const rnd = seed => () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 
 // ================================================================ crates
 function shuffleCrates(){
-  const pool = CFG.pool.length ? CFG.pool.slice() : [{ name:"CRATE", era:"??" }];
+  const norm = c => ({ name: String(c.name).toUpperCase(), era: String(c.tag ?? c.era ?? "").toUpperCase() });
+  const pool = (CFG.pool.length ? CFG.pool : [{ name:"CRATE", tag:"??" }]).map(norm);
   for (let i = pool.length - 1; i > 0; i--){ const j = Math.random() * (i + 1) | 0; [pool[i], pool[j]] = [pool[j], pool[i]]; }
   crates = [];
-  for (let i = 0; i < CFG.cratesPerRound; i++) crates.push(pool[i % pool.length]);
+  const n = CFG.cratesPerRound - (CFG.safe ? 1 : 0);
+  for (let i = 0; i < n; i++) crates.push(pool[i % pool.length]);
+  // one SAFE slot every round, in a random spot
+  if (CFG.safe) crates.splice(Math.random() * (crates.length + 1) | 0, 0, norm(CFG.safe));
   slotCounts = crates.map(() => 0);
 }
 
@@ -435,7 +439,7 @@ function reveal(){
 
   $("sN").textContent = crate.name;
   $("sE").textContent = crate.era;
-  $("sB").innerHTML = winner.house ? `THE HOUSE PICKED THIS ONE` : `DUG BY ${esc(winner.who).toUpperCase()}&nbsp;<span class="dim">·</span>&nbsp;+${CFG.pickPoints}`;
+  $("sB").innerHTML = winner.house ? `THE HOUSE CALLED THIS ONE` : `CALLED BY ${esc(winner.who).toUpperCase()}&nbsp;<span class="dim">·</span>&nbsp;+${CFG.pickPoints}`;
   const nm = $("sN"); nm.style.fontSize = "";
   requestAnimationFrame(() => {
     const max = W * .74, w = nm.scrollWidth;
@@ -455,7 +459,7 @@ const hideSlap = () => $("slap").classList.remove("on");
 function showBadge(){
   if (!lastPick) return;
   $("bN").innerHTML = `${esc(lastPick.crate.name)} <i>${esc(lastPick.crate.era)}</i>`;
-  $("bB").textContent = `DUG BY ${String(lastPick.by).toUpperCase()}`;
+  $("bB").textContent = `CALLED BY ${String(lastPick.by).toUpperCase()}`;
   $("badge").classList.add("on");
 }
 const hideBadge = () => $("badge").classList.remove("on");
@@ -480,7 +484,7 @@ function updateStatus(){
     return;
   }
   if (state === "drop"){ a.textContent = "DIGGING..."; b.textContent = `${marbles.length} MARBLES DOWN`; return; }
-  a.textContent = "CRATE LOCKED"; b.textContent = `${crates[winSlot].era} ${crates[winSlot].name}`;
+  a.textContent = "MOVE LOCKED"; b.textContent = `${crates[winSlot].name}`;
 }
 
 // ================================================================ sound

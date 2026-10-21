@@ -1,6 +1,6 @@
 # PR0CESS_LIVE // CRATE DIG
 
-A chat-played marble game for G-REX's stream. Chat types `!dig` to load a marble into the hopper. When the gate opens, the marbles fall through the peg board into the channel slots, and the first marble to land picks the crate G-REX has to flip.
+A chat-played marble game for G-REX's stream. Chat types `!dig` to load a marble into the hopper. When the gate opens, the marbles fall through the peg board into the channel slots, and the first marble to land picks a move G-REX has to make to the beat he's cooking, right now (HALF-TIME IT, 808 SLIDE, ADD A COWBELL...). There's one SAFE slot every round.
 
 **Live:** https://nobeatsattached.github.io/createdig/
 
@@ -23,12 +23,12 @@ Mods, the broadcaster, and anyone in `admins` in `crates.js`:
 
 | Command | What it does |
 |---|---|
-| `!crate open` | New round with fresh crates. Entries open for 45s, then it drops automatically |
+| `!crate open` | New round with fresh moves. Entries open for 45s, then it drops automatically |
 | `!crate open 90` | Same, with a custom timer |
 | `!crate go` | Drop now, skipping the timer |
-| `!crate shuffle` | Re-roll the crates on the board |
+| `!crate shuffle` | Re-roll the moves on the board |
 | `!crate board` | Show the all-time CRATE LEADERBOARD for 12s |
-| `!crate badge` | Bring the NOW FLIPPING tape back |
+| `!crate badge` | Bring the ACTIVE MOVE tape back |
 | `!crate clear` | Remove the tape, card, and leaderboard |
 | `!crate reset` | Back to idle |
 | `!crate hide` / `!crate show` | Fade the whole overlay out/in |
@@ -39,11 +39,11 @@ If chat is dead, HOUSE ball bearings fill in, so a round always works, even with
 
 ## Scoring
 
-Every marble that drops gets **+1**. The marble that picks the crate gets **+10**. The leaderboard lives inside the OBS browser source on G-REX's machine.
+Every marble that drops gets **+1**. The marble that calls the move gets **+10**. The leaderboard lives inside the OBS browser source on G-REX's machine.
 
-## Changing the crates
+## Changing the moves
 
-Edit `crates.js` on GitHub (pencil icon) → commit → wait about a minute → right-click the source in OBS → **Refresh**. Each round pulls `cratesPerRound` random crates from `pool`.
+Edit `crates.js` on GitHub (pencil icon) → commit → wait about a minute → right-click the source in OBS → **Refresh**. Each round puts SAFE plus random moves from `pool` on the board.
 
 ## Testing in a normal browser
 
