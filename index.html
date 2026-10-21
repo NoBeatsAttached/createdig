@@ -405,12 +405,14 @@ function open(secs){
   hideSlap(); hideBadge(); hideBoard();
   shuffleCrates(); rebuild();
   entrants.clear(); winner = null; winSlot = -1;
+  dropStart = 0;
   state = "open"; openUntil = performance.now() + (secs || CFG.openSeconds) * 1000;
   updateStatus();
 }
 function drop(){
   if (state !== "open") return;
   state = "drop";
+  dropStart = 0;   // the clock starts when the gate actually opens, never carried over from last round
   const need = Math.max(0, CFG.minMarbles - marbles.length);
   for (let i = 0; i < need; i++) spawnMarble("HOUSE", null, true);
   updateStatus();
@@ -545,7 +547,11 @@ function frame(now){
         mb.still = 0;
       }
     }
-    if (!winner && now - dropStart > 30000 && marbles.length) land(marbles[0], Math.random() * L.N | 0);
+    // failsafe: 30s after the gate opened with nothing landed, the lowest marble wins the slot it's above
+    if (!winner && now - dropStart > 30000 && marbles.length){
+      const low = marbles.reduce((a, b) => b.position.y > a.position.y ? b : a);
+      land(low, Math.max(0, Math.min(L.N - 1, Math.floor((low.position.x - L.bx) / L.slotW))));
+    }
     statusT += dt; if (statusT > 300){ statusT = 0; updateStatus(); }
   }
   draw(now);
@@ -700,7 +706,8 @@ addEventListener("keydown", e => {
 });
 addEventListener("pointerdown", () => ac());
 let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (state === "idle" || state === "result") rebuild(); }, 200); });
-window.crateDig = { command, join, get state(){ return state; } };
+window.crateDig = { command, join, get state(){ return state; },
+  get debug(){ return { winSlot, winnerSlotNow: winner ? Math.floor((winner.position.x - L.bx) / L.slotW) : null, sinceGate: dropStart ? Math.round(performance.now() - dropStart) : null }; } };
 
 // ================================================================ boot
 lastPick = store.get("last", null);
