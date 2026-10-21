@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PR0CESS_LIVE // CRATE DIG</title>
+<style>
+@font-face{font-family:'Code';src:url(fonts/code.woff2) format('woff2');font-display:block}
+@font-face{font-family:'Marker';src:url(fonts/marker.woff2) format('woff2');font-display:block}
+:root{--blue:#3A93D6;--vfd:#7cc8ff;--bone:#EDEDEB;--steel:#767C85;--ink:#16181b}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:transparent;color:var(--bone);font-family:'Code',monospace}
+body.preview{background:#2a2c30}
+#stage{position:absolute;inset:0;transition:opacity .4s}
+body.hidden #stage{opacity:0}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+
+/* VFD display (status) */
+.vfd{position:absolute;background:#030507;border-radius:4px;
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.9),inset 0 0 0 1px rgba(0,0,0,.8),0 1px 0 rgba(255,255,255,.07);
+  color:var(--vfd);text-shadow:0 0 6px rgba(58,147,214,.85),0 0 1px #bfe4ff;overflow:hidden;
+  display:flex;flex-direction:column;justify-content:center;padding:0 1.1em;letter-spacing:.05em;white-space:nowrap}
+.vfd::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,.28) 0 1px,transparent 1px 3px),
+             linear-gradient(180deg,rgba(255,255,255,.05),transparent 40%)}
+#vfd .l1{font-size:var(--vfd1)}
+#vfd .l2{font-size:var(--vfd2);opacity:.75;margin-top:.35em}
+.dim{opacity:.35}
+
+/* winning tape, slapped onto the faceplate */
+#slap{position:absolute;left:50%;top:var(--slapY);transform:translate(-50%,-50%) rotate(-2.2deg) scale(1.25);opacity:0;
+  pointer-events:none;transition:transform .28s cubic-bezier(.2,1.6,.4,1),opacity .15s}
+#slap.on{opacity:1;transform:translate(-50%,-50%) rotate(-2.2deg) scale(1)}
+.tape{background:linear-gradient(178deg,#efebdd,#e2dccb 60%,#d9d2bf);color:var(--ink);font-family:'Marker',cursive;
+  clip-path:polygon(0 4%,1.5% 0,3% 5%,4.5% 1%,6% 4%,7% 0,93% 0,94.5% 4%,96% 0,97.5% 5%,99% 1%,100% 4%,
+                    100% 96%,98.5% 100%,97% 95%,95.5% 99%,94% 96%,92.5% 100%,7% 100%,5.5% 96%,4% 100%,2.5% 95%,1% 99%,0 96%)}
+#slap .tape{padding:.25em .9em .2em;text-align:center}
+#slap .wrap{filter:drop-shadow(0 12px 22px rgba(0,0,0,.7))}
+#slap .nm{font-size:var(--slapFs);line-height:1.05;white-space:nowrap}
+#slap .era{font-size:calc(var(--slapFs)*.42);color:#1f5f9a;line-height:1.1}
+#slap .by{margin:1.1em auto 0;display:flex;flex-direction:row;align-items:center;position:relative;font-size:var(--vfd1);padding:.6em 1.2em;width:max-content}
+
+/* NOW FLIPPING tape, top-left of the hopper */
+#badge{position:absolute;opacity:0;transition:opacity .4s;transform:rotate(-1.5deg);pointer-events:none}
+#badge.on{opacity:1}
+#badge .k{font-size:var(--fsxs);color:#7a7f87;letter-spacing:.06em;margin-bottom:.3em}
+#badge .tape{padding:.15em .7em .1em;font-size:var(--fsm);white-space:nowrap}
+#badge .tape i{font-style:normal;color:#1f5f9a;font-size:.7em}
+#badge .b{font-size:var(--fsxs);color:var(--steel);margin-top:.45em}
+
+/* leaderboard: big VFD */
+#board{left:50%;top:50%;transform:translate(-50%,-50%);opacity:0;transition:opacity .3s;padding:1.2em 1.6em;
+  min-width:44%;justify-content:flex-start;font-size:var(--vfd2);
+  box-shadow:inset 0 2px 8px rgba(0,0,0,.9),0 0 0 6px #17191d,0 0 0 7px rgba(255,255,255,.06),0 20px 50px rgba(0,0,0,.7)}
+#board.on{opacity:1}
+#board .h{font-size:var(--vfd1);margin-bottom:.8em}
+#board .row{display:grid;grid-template-columns:2.4em 1fr auto;gap:1.2em;padding:.32em 0}
+#board .row .p{text-align:right}
+#board .row .r,#board .row .d{opacity:.5}
+
+#help{position:fixed;left:0;right:0;bottom:0;display:none;font:12px ui-monospace,monospace;background:#000;color:#B4B9BF;padding:5px 10px;z-index:9}
+body.preview #help{display:block}
+#help b{color:#3A93D6;font-weight:normal}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="bg"></canvas>
+  <canvas id="fg"></canvas>
+  <div class="vfd" id="vfd"><div class="l1" id="v1">CRATE DIG</div><div class="l2" id="v2">WAITING ON THE HOST</div></div>
+  <div id="badge"><div class="k">NOW FLIPPING</div><div class="tape" id="bN"></div><div class="b" id="bB"></div></div>
+  <div id="slap"><div class="wrap"><div class="tape"><div class="nm" id="sN"></div><div class="era" id="sE"></div></div></div><div class="vfd by" id="sB"></div></div>
+  <div class="vfd" id="board"></div>
+</div>
+<div id="help">PREVIEW — <b>O</b> open · <b>G</b> drop now · <b>T</b> +5 fake chatters · <b>S</b> shuffle crates · <b>L</b> leaderboard · <b>R</b> reset · <b>H</b> hide/show · chat: <span id="chatState">connecting…</span></div>
+
+<script src="vendor/matter.min.js"></script>
+<script src="crates.js"></script>
+<script>
+(() => {
+"use strict";
+const CFG = Object.assign({
+  channel:"grexbeatz", admins:[], cratesPerRound:7, openSeconds:45, minMarbles:3, maxMarbles:80,
+  resultSeconds:12, sound:true, digPoints:1, pickPoints:10, pool:[]
+}, window.CRATE_DIG || {});
+const Q = new URLSearchParams(location.search);
+if (Q.get("channel")) CFG.channel = Q.get("channel");
+if (Q.get("sound") === "0") CFG.sound = false;
+if (Q.get("crates")) CFG.cratesPerRound = Math.max(3, Math.min(12, +Q.get("crates") || 7));
+if (Q.get("demo") === "1") document.body.classList.add("preview");
+const ADMINS = new Set([CFG.channel, ...CFG.admins].map(s => String(s).toLowerCase()));
+const BLUE = "#3A93D6";
+
+const { Engine, Bodies, Composite, Body, Events } = Matter;
+const $ = id => document.getElementById(id);
+const bgc = $("bg"), bctx = bgc.getContext("2d");
+const fgc = $("fg"), ctx = fgc.getContext("2d");
+
+let W = 0, H = 0, DPR = 1, L = {};
+let engine, pegs = [], marbles = [], gate = null;
+let crates = [], slotCounts = [];
+let state = "idle", openUntil = 0, dropStart = 0, winner = null, winSlot = -1, lastPick = null;
+const entrants = new Map();
+
+const store = {
+  get(k, d){ try { const v = localStorage.getItem("cratedig." + k); return v ? JSON.parse(v) : d; } catch(e){ return d; } },
+  set(k, v){ try { localStorage.setItem("cratedig." + k, JSON.stringify(v)); } catch(e){} }
+};
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+const rnd = seed => () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+// ================================================================ crates
+function shuffleCrates(){
+  const pool = CFG.pool.length ? CFG.pool.slice() : [{ name:"CRATE", era:"??" }];
+  for (let i = pool.length - 1; i > 0; i--){ const j = Math.random() * (i + 1) | 0; [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  crates = [];
+  for (let i = 0; i < CFG.cratesPerRound; i++) crates.push(pool[i % pool.length]);
+  slotCounts = crates.map(() => 0);
+}
+
+// ================================================================ layout
+function layout(){
+  DPR = window.devicePixelRatio || 1;
+  W = innerWidth; H = innerHeight;
+  for (const c of [bgc, fgc]){ c.width = W * DPR; c.height = H * DPR; }
+  const u = Math.min(W, H * 1.6);
+  const pad = Math.round(u * .012);
+  const plate = { x:pad, y:pad, w:W - pad*2, h:H - pad*2 };
+  const m = Math.round(u * .028);
+  const topH = Math.round(H * .115);
+  const well = { x:plate.x + m, y:plate.y + topH, w:plate.w - m*2 };
+  const tapeH = Math.round(H * .105);
+  well.h = plate.y + plate.h - m * .7 - tapeH - well.y;
+  const N = crates.length, slotW = well.w / N;
+  const slotH = Math.round(H * .095);
+  const slotTop = well.y + well.h - slotH;
+  const gateY = well.y + well.h * .19;
+  let sx = Math.min(slotW / 2, (slotTop - gateY) / (10.5 * .9));
+  sx = well.w / Math.ceil(well.w / sx);                   // whole columns: symmetric, no express lane down the walls
+  const sy = sx * .9, r = sx * .29, pr = Math.max(3, sx * .11);
+  L = { u, pad, plate, m, topH, well, tapeH, N, slotW, slotH, slotTop, gateY, sx, sy, r, pr,
+        bx: well.x, bw: well.w, floorY: well.y + well.h,
+        pegTop: gateY + sy * .95, pegBot: slotTop - sy * .5 };
+
+  const rs = document.documentElement.style;
+  const fs = v => Math.max(10, Math.round(v)) + "px";
+  rs.setProperty("--fsxs", fs(u * .013)); rs.setProperty("--fsm", fs(u * .026));
+  rs.setProperty("--vfd1", fs(topH * .27)); rs.setProperty("--vfd2", fs(topH * .17));
+  rs.setProperty("--slapY", ((gateY + slotTop) / 2) + "px");
+  rs.setProperty("--slapFs", fs(u * .085));
+  const vw = plate.w * .44, vh = topH * .7;
+  Object.assign($("vfd").style, { left:(plate.x + plate.w - m - vw) + "px", top:(plate.y + (topH - vh) / 2 + m * .1) + "px", width:vw + "px", height:vh + "px" });
+  Object.assign($("badge").style, { left:(well.x + m * .5) + "px", top:(well.y + m * .45) + "px" });
+}
+
+// ================================================================ physics world
+function buildWorld(){
+  engine = Engine.create({ gravity:{ x:0, y:1, scale:.00085 * (L.sx / 60) }, positionIterations:8, velocityIterations:6 });
+  const add = (...b) => Composite.add(engine.world, b), th = 400;
+  const st = { isStatic:true, restitution:.4, friction:0 };
+  add(Bodies.rectangle(L.bx - th/2, H/2, th, H * 3, st),
+      Bodies.rectangle(L.bx + L.bw + th/2, H/2, th, H * 3, st),
+      Bodies.rectangle(W/2, L.floorY + th/2, W * 2, th, Object.assign({}, st, { restitution:.1, friction:.6 })));
+  const rail = Math.max(4, L.sx * .12);
+  for (let i = 1; i < L.N; i++){
+    const x = L.bx + i * L.slotW;
+    add(Bodies.rectangle(x, L.slotTop + L.slotH/2, rail, L.slotH, st), Bodies.circle(x, L.slotTop, rail * .75, st));
+  }
+  pegs = [];
+  let row = 0;
+  for (let y = L.pegTop; y <= L.pegBot; y += L.sy, row++){
+    const off = row % 2 ? L.sx / 2 : 0;
+    for (let x = L.bx + L.sx / 2 + off; x < L.bx + L.bw - L.sx * .25; x += L.sx){
+      const p = Bodies.circle(x, y, L.pr, Object.assign({}, st, { restitution:.5, label:"peg" }));
+      p.row = row; p.flash = 0; p.ang = Math.random() * 6.28;
+      pegs.push(p);
+    }
+  }
+  L.rows = row;
+  Composite.add(engine.world, pegs);
+  setGate(true);
+  Events.on(engine, "collisionStart", e => {
+    for (const pr of e.pairs){
+      const a = pr.bodyA, b = pr.bodyB;
+      const peg = a.label === "peg" ? a : b.label === "peg" ? b : null;
+      const mb = a.label === "marble" ? a : b.label === "marble" ? b : null;
+      if (!peg || !mb) continue;
+      peg.flash = 1;
+      if (Math.abs(mb.velocity.x) < .25) Body.setVelocity(mb, { x: mb.velocity.x + (Math.random() - .5) * .8, y: mb.velocity.y });
+      if (state === "drop") note(peg.row);
+    }
+  });
+}
+function setGate(on){
+  if (on && !gate){ gate = Bodies.rectangle(L.bx + L.bw/2, L.gateY + 4, L.bw, 8, { isStatic:true, friction:.2, restitution:.05 }); Composite.add(engine.world, gate); }
+  else if (!on && gate){ Composite.remove(engine.world, gate); gate = null; }
+}
+function rebuild(){
+  if (engine){ Composite.clear(engine.world, false); Engine.clear(engine); }
+  marbles = []; gate = null;
+  layout(); buildWorld(); paintPlate();
+}
+
+// ================================================================ static faceplate (bg canvas)
+let grain = null;
+function brushed(w, h){
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const g = c.getContext("2d"), R = rnd(7);
+  for (let y = 0; y < h; y++){
+    const a = .015 + R() * .04;
+    g.fillStyle = R() > .5 ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a * 1.6})`;
+    g.fillRect(0, y, w, 1);
+    if (R() > .7){ g.fillStyle = `rgba(255,255,255,${a * .8})`; g.fillRect(R() * w, y, R() * w * .4, 1); }
+  }
+  return c;
+}
+function rr(g, x, y, w, h, r){ g.beginPath(); g.roundRect(x, y, w, h, r); }
+function screw(g, x, y, s){
+  const gr = g.createRadialGradient(x - s*.3, y - s*.3, s*.1, x, y, s);
+  gr.addColorStop(0, "#7d828a"); gr.addColorStop(.6, "#3c4047"); gr.addColorStop(1, "#1a1c20");
+  g.fillStyle = "rgba(0,0,0,.6)"; g.beginPath(); g.arc(x, y + 1, s * 1.08, 0, 7); g.fill();
+  g.fillStyle = gr; g.beginPath(); g.arc(x, y, s, 0, 7); g.fill();
+  g.strokeStyle = "rgba(10,10,12,.85)"; g.lineWidth = Math.max(1.2, s * .22);
+  for (const t of [.6, .6 + Math.PI/2]){ g.beginPath(); g.moveTo(x + Math.cos(t) * s*.62, y + Math.sin(t) * s*.62); g.lineTo(x - Math.cos(t) * s*.62, y - Math.sin(t) * s*.62); g.stroke(); }
+}
+function knob(g, x, y, s, ang){
+  g.fillStyle = "rgba(0,0,0,.55)"; g.beginPath(); g.arc(x + s*.15, y + s*.3, s * 1.12, 0, 7); g.fill();
+  const gr = g.createRadialGradient(x - s*.35, y - s*.4, s*.1, x, y, s * 1.05);
+  gr.addColorStop(0, "#5d636c"); gr.addColorStop(.55, "#2a2d33"); gr.addColorStop(1, "#141518");
+  g.fillStyle = gr; g.beginPath(); g.arc(x, y, s, 0, 7); g.fill();
+  g.strokeStyle = "rgba(255,255,255,.12)"; g.lineWidth = 1; g.beginPath(); g.arc(x, y, s - .5, Math.PI * 1.1, Math.PI * 1.75); g.stroke();
+  g.strokeStyle = "rgba(237,237,235,.7)"; g.lineWidth = Math.max(1, s * .18); g.lineCap = "round";
+  g.beginPath(); g.moveTo(x + Math.cos(ang) * s * .2, y + Math.sin(ang) * s * .2); g.lineTo(x + Math.cos(ang) * s * .72, y + Math.sin(ang) * s * .72); g.stroke();
+  g.lineCap = "butt";
+}
+function tapePath(g, x, y, w, h, R){
+  const tooth = h / 7;
+  g.beginPath(); g.moveTo(x, y); g.lineTo(x + w, y);
+  for (let t = 0; t <= h; t += tooth) g.lineTo(x + w - (R() * h * .06), y + t);
+  g.lineTo(x + w, y + h); g.lineTo(x, y + h);
+  for (let t = h; t >= 0; t -= tooth) g.lineTo(x + R() * h * .06, y + t);
+  g.closePath();
+}
+function fitMarker(g, text, maxW, maxH){
+  let size = maxH * .62, lines = [text];
+  g.font = `${size}px Marker`;
+  if (g.measureText(text).width > maxW && text.includes(" ")){
+    const words = text.split(" "); let best = null;
+    for (let i = 1; i < words.length; i++){ const a = words.slice(0, i).join(" "), b = words.slice(i).join(" "); const w = Math.max(g.measureText(a).width, g.measureText(b).width); if (!best || w < best.w) best = { a, b, w }; }
+    lines = [best.a, best.b]; size = maxH * .42; g.font = `${size}px Marker`;
+  }
+  const widest = Math.max(...lines.map(l => g.measureText(l).width));
+  if (widest > maxW) size *= maxW / widest;
+  return { size, lines };
+}
+function paintPlate(){
+  const g = bctx; g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
+  const { plate:P, well:Wl, m, topH } = L, rad = L.u * .012;
+  g.save();
+  g.shadowColor = "rgba(0,0,0,.6)"; g.shadowBlur = L.u * .02; g.shadowOffsetY = L.u * .006;
+  const pg = g.createLinearGradient(0, P.y, 0, P.y + P.h); pg.addColorStop(0, "#1d2024"); pg.addColorStop(1, "#121316");
+  rr(g, P.x, P.y, P.w, P.h, rad); g.fillStyle = pg; g.fill();
+  g.restore();
+  g.save(); rr(g, P.x, P.y, P.w, P.h, rad); g.clip();
+  if (!grain || grain.width !== Math.ceil(P.w) || grain.height !== Math.ceil(P.h)) grain = brushed(Math.ceil(P.w), Math.ceil(P.h));
+  g.drawImage(grain, P.x, P.y);
+  const sheen = g.createLinearGradient(P.x, P.y, P.x + P.w, P.y + P.h);
+  sheen.addColorStop(0, "rgba(255,255,255,.05)"); sheen.addColorStop(.45, "rgba(255,255,255,0)"); sheen.addColorStop(1, "rgba(0,0,0,.18)");
+  g.fillStyle = sheen; g.fillRect(P.x, P.y, P.w, P.h);
+  g.restore();
+  g.strokeStyle = "rgba(255,255,255,.09)"; g.lineWidth = 1; rr(g, P.x + .5, P.y + .5, P.w - 1, P.h - 1, rad); g.stroke();
+  const sc = Math.max(4, L.u * .0075);
+  for (const [x, y] of [[P.x + m*.45, P.y + m*.45], [P.x + P.w - m*.45, P.y + m*.45], [P.x + m*.45, P.y + P.h - m*.45], [P.x + P.w - m*.45, P.y + P.h - m*.45]]) screw(g, x, y, sc);
+
+  // silkscreen
+  const ty = P.y + topH * .5, wm = topH * .3, x0 = P.x + m * 1.15;
+  g.textBaseline = "alphabetic"; g.textAlign = "left"; g.font = `${wm}px Code`;
+  g.fillStyle = "#e9e9e6"; g.fillText("PR", x0, ty + wm * .15);
+  let x = x0 + g.measureText("PR").width;
+  g.fillStyle = BLUE; g.fillText("0", x, ty + wm * .15); x += g.measureText("0").width;
+  g.fillStyle = "#e9e9e6"; g.fillText("CESS_LIVE", x, ty + wm * .15);
+  g.font = `${topH * .14}px Code`; g.fillStyle = "#7a7f87";
+  g.fillText("CRATE DIG  ·  MODEL CD-7  ·  DETROIT", x0, ty + wm * .15 + topH * .25);
+
+  // the well (play area), recessed
+  g.save();
+  rr(g, Wl.x, Wl.y, Wl.w, Wl.h, rad * .6); g.fillStyle = "#08090b"; g.fill(); g.clip();
+  const wg = g.createLinearGradient(0, Wl.y, 0, Wl.y + Wl.h); wg.addColorStop(0, "rgba(255,255,255,.025)"); wg.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = wg; g.fillRect(Wl.x, Wl.y, Wl.w, Wl.h);
+  g.shadowColor = "rgba(0,0,0,1)"; g.shadowBlur = L.u * .018; g.shadowOffsetY = L.u * .005;
+  g.strokeStyle = "#000"; g.lineWidth = L.u * .02; rr(g, Wl.x - L.u*.01, Wl.y - L.u*.01, Wl.w + L.u*.02, Wl.h + L.u*.02, rad); g.stroke();
+  g.restore();
+  g.strokeStyle = "rgba(255,255,255,.07)"; g.lineWidth = 1; g.beginPath(); g.moveTo(Wl.x + 4, Wl.y + Wl.h + .5); g.lineTo(Wl.x + Wl.w - 4, Wl.y + Wl.h + .5); g.stroke();
+
+  // channel slots
+  const rail = Math.max(4, L.sx * .12);
+  for (let i = 0; i < L.N; i++){
+    g.fillStyle = "rgba(255,255,255,.012)"; g.fillRect(L.bx + i * L.slotW + rail/2, L.slotTop, L.slotW - rail, L.slotH);
+    ledLadder(g, i, -1);
+  }
+  for (let i = 1; i < L.N; i++){
+    const x = L.bx + i * L.slotW;
+    const rg = g.createLinearGradient(x - rail/2, 0, x + rail/2, 0);
+    rg.addColorStop(0, "#2c2f35"); rg.addColorStop(.45, "#6a6f78"); rg.addColorStop(1, "#202226");
+    g.fillStyle = rg; g.fillRect(x - rail/2, L.slotTop, rail, L.slotH);
+    knob(g, x, L.slotTop, rail * .75, 0);
+  }
+
+  // pegs as knob caps
+  for (const p of pegs) knob(g, p.position.x, p.position.y, L.pr, p.ang);
+
+  // channel numbers + era silkscreen + tape labels
+  const R = rnd(crates.reduce((a, c) => a + c.name.length * 31 + c.era.length, 11));
+  for (let i = 0; i < L.N; i++){
+    const cx = L.bx + (i + .5) * L.slotW, cr = crates[i];
+    const ny = L.floorY + L.tapeH * .2;
+    g.font = `${Math.max(9, L.tapeH * .13)}px Code`; g.textAlign = "center"; g.fillStyle = "#7a7f87";
+    g.fillText(`${String(i + 1).padStart(2, "0")}  ·  ${cr.era}`, cx, ny);
+    const tw = L.slotW * .86, th = L.tapeH * .58, tx = cx - tw/2, tyy = ny + L.tapeH * .1;
+    g.save();
+    g.translate(cx, tyy + th/2); g.rotate((R() - .5) * .045); g.translate(-cx, -(tyy + th/2));
+    g.shadowColor = "rgba(0,0,0,.55)"; g.shadowBlur = 6; g.shadowOffsetY = 2;
+    tapePath(g, tx, tyy, tw, th, R);
+    const tg = g.createLinearGradient(0, tyy, 0, tyy + th); tg.addColorStop(0, "#eeeadb"); tg.addColorStop(1, "#d8d1bd");
+    g.fillStyle = tg; g.fill();
+    g.shadowColor = "transparent";
+    const f = fitMarker(g, cr.name, tw * .88, th);
+    g.font = `${f.size}px Marker`; g.fillStyle = "#17191c"; g.textBaseline = "middle";
+    f.lines.forEach((l, k) => g.fillText(l, cx, tyy + th/2 + (k - (f.lines.length - 1)/2) * f.size * 1.02 + f.size * .05));
+    g.textBaseline = "alphabetic";
+    g.restore();
+  }
+}
+function ledLadder(g, i, lit, peak){
+  // 10-segment meter on the right side of each channel
+  const n = 10, x0 = L.bx + (i + 1) * L.slotW - Math.max(4, L.sx * .12)/2 - L.slotW * .075;
+  const segH = L.slotH / (n * 1.45), segW = Math.max(3, L.slotW * .04);
+  for (let k = 0; k < n; k++){
+    const y = L.floorY - (k + 1) * segH * 1.45 + segH * .2;
+    if (lit < 0){ g.fillStyle = "#0f1a24"; g.fillRect(x0, y, segW, segH); continue; }
+    if (k >= lit) continue;
+    g.fillStyle = peak && k === n - 1 ? "#EDEDEB" : BLUE;
+    g.shadowColor = "rgba(58,147,214,.9)"; g.shadowBlur = 8;
+    g.fillRect(x0, y, segW, segH);
+    g.shadowBlur = 0;
+  }
+}
+
+// ================================================================ marbles
+const sprites = new Map();
+function sprite(color, house){
+  const key = (house ? "H" : color) + "|" + L.r.toFixed(1) + "|" + DPR;
+  if (sprites.has(key)) return sprites.get(key);
+  const s = Math.ceil(L.r * 2 + 6), c = document.createElement("canvas");
+  c.width = s * DPR; c.height = s * DPR;
+  const g = c.getContext("2d"); g.scale(DPR, DPR);
+  const x = s/2, y = s/2, r = L.r;
+  g.fillStyle = "rgba(0,0,0,.45)"; g.beginPath(); g.arc(x + r*.12, y + r*.22, r, 0, 7); g.fill();
+  const gr = g.createRadialGradient(x - r*.35, y - r*.4, r*.1, x, y, r);
+  if (house){ gr.addColorStop(0, "#f2f3f5"); gr.addColorStop(.35, "#9aa0a8"); gr.addColorStop(.8, "#41454c"); gr.addColorStop(1, "#1e2024"); }
+  else { gr.addColorStop(0, shade(color, .55)); gr.addColorStop(.45, color); gr.addColorStop(1, shade(color, -.6)); }
+  g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  if (!house){
+    g.strokeStyle = shade(color, .7); g.globalAlpha = .45; g.lineWidth = r * .18;
+    g.beginPath(); g.arc(x + r*.1, y + r*.15, r * .5, -.4, 1.9); g.stroke(); g.globalAlpha = 1;
+  }
+  g.fillStyle = "rgba(255,255,255,.85)"; g.beginPath(); g.ellipse(x - r*.38, y - r*.42, r*.22, r*.14, -.6, 0, 7); g.fill();
+  const o = { c, s }; sprites.set(key, o); return o;
+}
+function hex2(c){ if (c[0] === "#") return [1,3,5].map(i => parseInt(c.slice(i, i+2), 16)); return c.match(/\d+/g).map(Number); }
+function shade(c, t){ const v = hex2(c).map(x => t > 0 ? x + (255 - x) * t : x * (1 + t)); return `rgb(${v.map(x => Math.round(x)).join(",")})`; }
+function normColor(c){
+  if (!/^#[0-9a-f]{6}$/i.test(c || "")) return "#8fa3b8";
+  let [r, g, b] = hex2(c);
+  const lum = .2126*r + .7152*g + .0722*b;
+  if (lum < 90){ const k = 90 / Math.max(lum, 1); r = Math.min(255, r*k + 30); g = Math.min(255, g*k + 30); b = Math.min(255, b*k + 30); }
+  return `rgb(${r|0},${g|0},${b|0})`;
+}
+function spawnMarble(name, color, house, login){
+  const x = L.bx + L.r * 2 + Math.random() * (L.bw - L.r * 4);
+  const y = L.well.y - L.r * 2 - Math.random() * L.r * 6;
+  const mb = Bodies.circle(x, y, L.r, { restitution:.45, friction:.002, frictionAir:.012, density:.002, label:"marble" });
+  Object.assign(mb, { login: login || null, who: name, color: color || "#8fa3b8", house: !!house, born: performance.now(), landed: -1, still: 0 });
+  marbles.push(mb); Composite.add(engine.world, mb);
+  return mb;
+}
+let flashLine = null;
+function join(login, display, color){
+  if (state !== "open") return;
+  login = login.toLowerCase();
+  if (entrants.has(login) || entrants.size >= CFG.maxMarbles) return;
+  entrants.set(login, { name: display || login, color });
+  spawnMarble(display || login, normColor(color), false, login);
+  flashLine = { text: "+ " + (display || login), until: performance.now() + 1600 };
+  updateStatus();
+}
+
+// ================================================================ flow
+function open(secs){
+  if (state === "drop") return;
+  hideSlap(); hideBadge(); hideBoard();
+  shuffleCrates(); rebuild();
+  entrants.clear(); winner = null; winSlot = -1;
+  state = "open"; openUntil = performance.now() + (secs || CFG.openSeconds) * 1000;
+  updateStatus();
+}
+function drop(){
+  if (state !== "open") return;
+  state = "drop";
+  const need = Math.max(0, CFG.minMarbles - marbles.length);
+  for (let i = 0; i < need; i++) spawnMarble("HOUSE", null, true);
+  updateStatus();
+  setTimeout(() => { setGate(false); dropStart = performance.now(); clunk(); }, need ? 900 : 250);
+}
+function land(mb, slot){
+  mb.landed = slot; slotCounts[slot]++;
+  if (winner) return;
+  winner = mb; winSlot = slot;
+  chord([0, 2, 4, 7], .1);
+  setTimeout(reveal, 2200);
+}
+function reveal(){
+  if (state !== "drop") return;
+  state = "result";
+  const crate = crates[winSlot];
+  const pts = store.get("board", {});
+  for (const [login, e] of entrants){ const p = pts[login] || (pts[login] = { name:e.name, digs:0, picks:0 }); p.name = e.name; p.digs++; }
+  if (!winner.house && winner.login && pts[winner.login]) pts[winner.login].picks++;
+  store.set("board", pts);
+  const hist = store.get("history", []);
+  hist.unshift({ crate: crate.name, era: crate.era, by: winner.house ? "HOUSE" : winner.who, t: Date.now() });
+  store.set("history", hist.slice(0, 50));
+  lastPick = { crate, by: winner.house ? "THE HOUSE" : winner.who };
+  store.set("last", lastPick);
+
+  $("sN").textContent = crate.name;
+  $("sE").textContent = crate.era;
+  $("sB").innerHTML = winner.house ? `THE HOUSE PICKED THIS ONE` : `DUG BY ${esc(winner.who).toUpperCase()}&nbsp;<span class="dim">·</span>&nbsp;+${CFG.pickPoints}`;
+  const nm = $("sN"); nm.style.fontSize = "";
+  requestAnimationFrame(() => {
+    const max = W * .74, w = nm.scrollWidth;
+    if (w > max) nm.style.fontSize = (parseFloat(getComputedStyle(nm).fontSize) * max / w) + "px";
+    $("slap").classList.add("on"); slapSound();
+  });
+  updateStatus();
+  clearTimeout(reveal.t);
+  reveal.t = setTimeout(() => { hideSlap(); showBadge(); }, CFG.resultSeconds * 1000);
+}
+function reset(){
+  clearTimeout(reveal.t); hideSlap(); hideBoard();
+  state = "idle"; entrants.clear(); winner = null; winSlot = -1;
+  shuffleCrates(); rebuild(); updateStatus();
+}
+const hideSlap = () => $("slap").classList.remove("on");
+function showBadge(){
+  if (!lastPick) return;
+  $("bN").innerHTML = `${esc(lastPick.crate.name)} <i>${esc(lastPick.crate.era)}</i>`;
+  $("bB").textContent = `DUG BY ${String(lastPick.by).toUpperCase()}`;
+  $("badge").classList.add("on");
+}
+const hideBadge = () => $("badge").classList.remove("on");
+function showBoard(){
+  const pts = store.get("board", {});
+  const rows = Object.values(pts).map(p => ({ ...p, score: p.picks * CFG.pickPoints + p.digs * CFG.digPoints })).sort((a, b) => b.score - a.score).slice(0, 8);
+  $("board").innerHTML = `<div class="h">TOP DIGGERS</div>` + (rows.length
+    ? rows.map((p, i) => `<div class="row"><span class="r">${String(i + 1).padStart(2, "0")}</span><span>${esc(p.name).toUpperCase()} <span class="d">${p.picks}P ${p.digs}D</span></span><span class="p">${p.score}</span></div>`).join("")
+    : `<div class="row"><span></span><span class="d">NOBODY HAS DUG YET</span><span></span></div>`);
+  hideSlap(); $("board").classList.add("on");
+  clearTimeout(showBoard.t); showBoard.t = setTimeout(hideBoard, 12000);
+}
+const hideBoard = () => $("board").classList.remove("on");
+
+function updateStatus(){
+  const a = $("v1"), b = $("v2");
+  if (state === "idle"){ a.textContent = "CRATE DIG"; b.textContent = "WAITING ON THE HOST"; return; }
+  if (state === "open"){
+    const s = Math.max(0, Math.ceil((openUntil - performance.now()) / 1000));
+    a.innerHTML = `TYPE !dig <span class="dim">·</span> ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    b.textContent = flashLine && performance.now() < flashLine.until ? flashLine.text.toUpperCase() : `${entrants.size} DIGGER${entrants.size === 1 ? "" : "S"} IN THE HOPPER`;
+    return;
+  }
+  if (state === "drop"){ a.textContent = "DIGGING..."; b.textContent = `${marbles.length} MARBLES DOWN`; return; }
+  a.textContent = "CRATE LOCKED"; b.textContent = `${crates[winSlot].era} ${crates[winSlot].name}`;
+}
+
+// ================================================================ sound
+let AC = null, noteBudget = 0;
+const SCALE = [0, 3, 5, 7, 10];
+function ac(){
+  if (!CFG.sound) return null;
+  if (!AC){ try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){ return null; } }
+  if (AC.state === "suspended") AC.resume();
+  return AC;
+}
+function tone(semi, vol, dur, type){
+  const a = ac(); if (!a) return;
+  const t = a.currentTime, o = a.createOscillator(), g = a.createGain();
+  o.type = type || "triangle"; o.frequency.value = 220 * Math.pow(2, semi / 12);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .004); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + .02);
+}
+function note(row){
+  if (noteBudget <= 0) return; noteBudget--;
+  const n = Math.max(0, (L.rows || 10) - 1 - row);
+  tone(SCALE[n % 5] + 12 * Math.floor(n / 5), .045, .22);
+}
+function chord(steps, vol){ steps.forEach((s, i) => setTimeout(() => tone(SCALE[s % 5] + 12 * Math.floor(s / 5) + 12, vol, .9, "sine"), i * 70)); }
+function clunk(){ tone(-24, .2, .18, "square"); tone(-12, .08, .12, "triangle"); }
+function slapSound(){
+  const a = ac(); if (!a) return;
+  const len = a.sampleRate * .12, buf = a.createBuffer(1, len, a.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+  const s = a.createBufferSource(), g = a.createGain(), f = a.createBiquadFilter();
+  f.type = "lowpass"; f.frequency.value = 1800; g.gain.value = .35;
+  s.buffer = buf; s.connect(f).connect(g).connect(a.destination); s.start();
+}
+
+// ================================================================ loop
+let last = performance.now(), acc = 0, statusT = 0;
+const STEP = 1000 / 120;
+function frame(now){
+  const dt = Math.min(50, now - last); last = now;
+  noteBudget = Math.min(6, noteBudget + dt * .025);
+  acc += dt;
+  while (acc >= STEP){ Engine.update(engine, STEP); acc -= STEP; }
+  if (state === "open"){
+    statusT += dt; if (statusT > 200){ statusT = 0; updateStatus(); }
+    if (now >= openUntil) drop();
+  }
+  if (state === "drop" && dropStart){
+    const lockY = L.slotTop + L.r * 1.2;
+    for (const mb of marbles){
+      if (mb.landed >= 0) continue;
+      if (mb.position.y > lockY){ land(mb, Math.max(0, Math.min(L.N - 1, Math.floor((mb.position.x - L.bx) / L.slotW)))); continue; }
+      const sp = Math.hypot(mb.velocity.x, mb.velocity.y);
+      mb.still = sp < .15 ? mb.still + dt : 0;
+      if (mb.still > 700){
+        // stalled (usually wedged between a wall and a peg): flick it toward the middle
+        const mid = L.bx + L.bw / 2, dir = Math.sign(mid - mb.position.x) || 1;
+        Body.setVelocity(mb, { x: dir * (1.5 + Math.random() * 1.5), y: -1.2 });
+        mb.still = 0;
+      }
+    }
+    if (!winner && now - dropStart > 30000 && marbles.length) land(marbles[0], Math.random() * L.N | 0);
+    statusT += dt; if (statusT > 300){ statusT = 0; updateStatus(); }
+  }
+  draw(now);
+  requestAnimationFrame(frame);
+}
+
+function draw(now){
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const showWin = winSlot >= 0 && (state === "drop" || state === "result");
+
+  // gate: a steel shutter bar across the hopper
+  if (gate){
+    const gy = L.gateY, gh = Math.max(6, L.r * .55);
+    const gg = ctx.createLinearGradient(0, gy, 0, gy + gh);
+    gg.addColorStop(0, "#8a9099"); gg.addColorStop(.4, "#4a4f57"); gg.addColorStop(1, "#1f2125");
+    ctx.fillStyle = "rgba(0,0,0,.5)"; ctx.fillRect(L.bx, gy + gh, L.bw, 3);
+    ctx.fillStyle = gg; ctx.fillRect(L.bx, gy, L.bw, gh);
+    for (let x = L.bx + L.bw * .1; x < L.bx + L.bw; x += L.bw * .2) screw(ctx, x, gy + gh/2, gh * .32);
+    if (!marbles.length){
+      ctx.font = `${Math.max(10, L.u * .016)}px Code`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillStyle = "rgba(122,127,135,.8)";
+      ctx.fillText(state === "open" ? "HOPPER  ·  TYPE !dig TO LOAD A MARBLE" : "HOPPER EMPTY", L.bx + L.bw/2, (L.well.y + gy) / 2);
+    }
+  }
+
+  // winning channel backlight
+  if (showWin){
+    const x = L.bx + winSlot * L.slotW;
+    const gl = ctx.createLinearGradient(0, L.slotTop, 0, L.floorY);
+    gl.addColorStop(0, "rgba(58,147,214,0)"); gl.addColorStop(1, "rgba(58,147,214,.32)");
+    ctx.fillStyle = gl; ctx.fillRect(x + 3, L.slotTop, L.slotW - 6, L.slotH);
+    const cx = x + L.slotW / 2, ty = L.floorY + L.tapeH * .55;
+    const rg = ctx.createRadialGradient(cx, ty, 0, cx, ty, L.slotW * .6);
+    rg.addColorStop(0, "rgba(58,147,214,.28)"); rg.addColorStop(1, "rgba(58,147,214,0)");
+    ctx.globalCompositeOperation = "screen"; ctx.fillStyle = rg; ctx.fillRect(x - L.slotW*.1, L.floorY, L.slotW * 1.2, L.tapeH); ctx.globalCompositeOperation = "source-over";
+  }
+
+  // LED meters light as marbles land
+  const most = Math.max(1, ...slotCounts);
+  for (let i = 0; i < L.N; i++){
+    if (!slotCounts[i]) continue;
+    const lit = i === winSlot && state === "result" ? 10 : Math.max(1, Math.round(slotCounts[i] / most * 9));
+    ledLadder(ctx, i, lit, i === winSlot && state === "result");
+  }
+
+  // peg hit rings
+  for (const p of pegs){
+    if (p.flash < .04) continue;
+    ctx.strokeStyle = `rgba(58,147,214,${p.flash})`; ctx.lineWidth = Math.max(1.5, L.pr * .35);
+    ctx.shadowColor = BLUE; ctx.shadowBlur = 10 * p.flash;
+    ctx.beginPath(); ctx.arc(p.position.x, p.position.y, L.pr * 1.25, 0, 7); ctx.stroke();
+    p.flash *= .9;
+  }
+  ctx.shadowBlur = 0;
+
+  // marbles
+  for (const mb of marbles){
+    const sp = sprite(mb.color, mb.house);
+    ctx.drawImage(sp.c, mb.position.x - sp.s/2, mb.position.y - sp.s/2, sp.s, sp.s);
+    if (mb === winner){
+      ctx.strokeStyle = "#EDEDEB"; ctx.lineWidth = 2; ctx.shadowColor = BLUE; ctx.shadowBlur = 12;
+      ctx.beginPath(); ctx.arc(mb.position.x, mb.position.y, L.r + 3, 0, 7); ctx.stroke(); ctx.shadowBlur = 0;
+    }
+  }
+
+  // name tags: new joins for a moment, everyone mid-drop when few, the winner always
+  const showAll = state === "drop" && marbles.length <= 8;
+  const fz = Math.max(10, L.u * .0125);
+  ctx.font = `${fz}px Code`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const mb of marbles){
+    const isWin = mb === winner;
+    if (mb.house && !isWin) continue;
+    const a = isWin || showAll ? 1 : Math.max(0, 1 - (now - mb.born - 2200) / 500);
+    if (a <= 0) continue;
+    const label = mb.house ? "HOUSE" : (mb.who.length > 14 ? mb.who.slice(0, 13) + "…" : mb.who);
+    const tw = ctx.measureText(label).width + fz * .9, th = fz * 1.5;
+    const tx = Math.max(L.bx + tw/2 + 4, Math.min(L.bx + L.bw - tw/2 - 4, mb.position.x));
+    const ty = mb.position.y - L.r - th * .75;
+    ctx.globalAlpha = a;
+    ctx.fillStyle = isWin ? BLUE : "rgba(14,15,18,.92)";
+    ctx.beginPath(); ctx.roundRect(tx - tw/2, ty - th/2, tw, th, 3); ctx.fill();
+    ctx.fillStyle = isWin ? "#fff" : "#d9dade";
+    ctx.fillText(label, tx, ty + 1);
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ================================================================ twitch chat (read-only, anonymous — no login, no token)
+let ws = null, wsTries = 0;
+function chat(){
+  const chan = CFG.channel.toLowerCase().replace(/^#/, "");
+  ws = new WebSocket("wss://irc-ws.chat.twitch.tv:443");
+  ws.onopen = () => { ws.send("CAP REQ :twitch.tv/tags"); ws.send("PASS SCHMOOPIIE"); ws.send("NICK justinfan" + (10000 + Math.random() * 80000 | 0)); ws.send("JOIN #" + chan); };
+  ws.onmessage = ev => {
+    for (const raw of ev.data.split("\r\n")){
+      if (!raw) continue;
+      if (raw.startsWith("PING")){ ws.send("PONG :tmi.twitch.tv"); continue; }
+      if (raw.includes(" JOIN #")){ wsTries = 0; $("chatState").textContent = "live on #" + chan; }
+      const m = raw.match(/^(?:@(\S+) )?:(\w+)!\S+ PRIVMSG #\S+ :(.*)$/);
+      if (m) onChat(m[2], parseTags(m[1] || ""), m[3]);
+    }
+  };
+  ws.onclose = () => { $("chatState").textContent = "reconnecting…"; setTimeout(chat, Math.min(15000, 1000 * 2 ** wsTries++)); };
+}
+function parseTags(s){ const t = {}; s.split(";").forEach(kv => { const i = kv.indexOf("="); t[kv.slice(0, i)] = kv.slice(i + 1); }); return t; }
+function onChat(login, tags, msg){
+  const lower = msg.trim().toLowerCase();
+  const display = (tags["display-name"] || login).replace(/\\s/g, " ");
+  if (lower === "!dig" || lower.startsWith("!dig ")){ join(login, display, tags.color); return; }
+  if (!lower.startsWith("!crate")) return;
+  const isAdmin = tags.mod === "1" || /(^|,)broadcaster\//.test(tags.badges || "") || ADMINS.has(login.toLowerCase());
+  if (!isAdmin) return;
+  const [, cmd = "", arg = ""] = lower.split(/\s+/);
+  command(cmd, arg);
+}
+function command(cmd, arg){
+  switch (cmd){
+    case "open": open(+arg || 0); break;
+    case "go": case "drop": drop(); break;
+    case "reset": reset(); break;
+    case "shuffle":
+      if (state === "idle"){ shuffleCrates(); rebuild(); }
+      else if (state === "open"){ shuffleCrates(); rebuild(); for (const [lg, e] of entrants) spawnMarble(e.name, normColor(e.color), false, lg); }
+      break;
+    case "test": fakes(Math.min(40, +arg || 5)); break;
+    case "board": case "top": showBoard(); break;
+    case "badge": showBadge(); break;
+    case "clear": hideBadge(); hideSlap(); hideBoard(); break;
+    case "hide": document.body.classList.add("hidden"); break;
+    case "show": document.body.classList.remove("hidden"); break;
+    case "wipe": if (arg === "confirm"){ store.set("board", {}); store.set("history", []); showBoard(); } break;
+  }
+}
+
+// ================================================================ testing helpers
+const FAKE = ["lurkr_supreme","808_mafia","dustyfingers","samplesnatcher","wavvy","bassface","crate_rat","loopgod","kickdrumkid",
+  "sidechained","vinylbandit","tapehiss","choptheflip","hihat_harry","sub_zero","mpc_mike","detroit_dust","digitaldig","swangin","boombapbae"];
+let fakeN = 0;
+function fakes(n){
+  if (state === "idle") open();
+  const colors = ["#1E90FF","#FF7F50","#9ACD32","#DAA520","#8A2BE2","#00FF7F","#FF69B4","#5F9EA0","#B22222","#2E8B57"];
+  for (let i = 0; i < n; i++){
+    const nm = FAKE[fakeN % FAKE.length] + (fakeN >= FAKE.length ? fakeN : ""); fakeN++;
+    setTimeout(() => join(nm, nm, colors[Math.random() * colors.length | 0]), i * 140);
+  }
+}
+addEventListener("keydown", e => {
+  ({ o:() => command("open"), g:() => command("go"), t:() => command("test", "5"), s:() => command("shuffle"),
+     l:() => command("board"), r:() => command("reset"), h:() => document.body.classList.toggle("hidden") }[e.key.toLowerCase()] || (() => {}))();
+  ac();
+});
+addEventListener("pointerdown", () => ac());
+let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (state === "idle" || state === "result") rebuild(); }, 200); });
+window.crateDig = { command, join, get state(){ return state; } };
+
+// ================================================================ boot
+lastPick = store.get("last", null);
+shuffleCrates();
+Promise.all([document.fonts.load("20px Code"), document.fonts.load("20px Marker")]).finally(() => {
+  rebuild(); updateStatus();
+  requestAnimationFrame(t => { last = t; frame(t); });
+  chat();
+});
+})();
+</script>
+</body>
+</html>
