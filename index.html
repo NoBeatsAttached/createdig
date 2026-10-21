@@ -462,7 +462,7 @@ const hideBadge = () => $("badge").classList.remove("on");
 function showBoard(){
   const pts = store.get("board", {});
   const rows = Object.values(pts).map(p => ({ ...p, score: p.picks * CFG.pickPoints + p.digs * CFG.digPoints })).sort((a, b) => b.score - a.score).slice(0, 8);
-  $("board").innerHTML = `<div class="h">TOP DIGGERS</div>` + (rows.length
+  $("board").innerHTML = `<div class="h">CRATE LEADERBOARD</div>` + (rows.length
     ? rows.map((p, i) => `<div class="row"><span class="r">${String(i + 1).padStart(2, "0")}</span><span>${esc(p.name).toUpperCase()} <span class="d">${p.picks}P ${p.digs}D</span></span><span class="p">${p.score}</span></div>`).join("")
     : `<div class="row"><span></span><span class="d">NOBODY HAS DUG YET</span><span></span></div>`);
   hideSlap(); $("board").classList.add("on");
@@ -476,7 +476,7 @@ function updateStatus(){
   if (state === "open"){
     const s = Math.max(0, Math.ceil((openUntil - performance.now()) / 1000));
     a.innerHTML = `TYPE !dig <span class="dim">·</span> ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-    b.textContent = flashLine && performance.now() < flashLine.until ? flashLine.text.toUpperCase() : `${entrants.size} DIGGER${entrants.size === 1 ? "" : "S"} IN THE HOPPER`;
+    b.textContent = flashLine && performance.now() < flashLine.until ? flashLine.text.toUpperCase() : `${entrants.size} MARBLE${entrants.size === 1 ? "" : "S"} IN THE HOPPER`;
     return;
   }
   if (state === "drop"){ a.textContent = "DIGGING..."; b.textContent = `${marbles.length} MARBLES DOWN`; return; }

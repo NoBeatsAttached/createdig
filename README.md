@@ -27,7 +27,7 @@ Mods, the broadcaster, and anyone in `admins` in `crates.js`:
 | `!crate open 90` | Same, with a custom timer |
 | `!crate go` | Drop now, skipping the timer |
 | `!crate shuffle` | Re-roll the crates on the board |
-| `!crate board` | Show the all-time TOP DIGGERS for 12s |
+| `!crate board` | Show the all-time CRATE LEADERBOARD for 12s |
 | `!crate badge` | Bring the NOW FLIPPING tape back |
 | `!crate clear` | Remove the tape, card, and leaderboard |
 | `!crate reset` | Back to idle |
