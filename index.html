@@ -100,6 +100,7 @@ let W = 0, H = 0, DPR = 1, L = {};
 let engine, pegs = [], marbles = [], gate = null;
 let crates = [], slotCounts = [];
 let state = "idle", openUntil = 0, dropStart = 0, winner = null, winSlot = -1, lastPick = null;
+let round = 0;   // bumps on every open/reset; any timer from an older round sees the mismatch and does nothing
 const entrants = new Map();
 
 const store = {
@@ -196,7 +197,7 @@ function buildWorld(){
   });
 }
 function setGate(on){
-  if (on && !gate){ gate = Bodies.rectangle(L.bx + L.bw/2, L.gateY + 4, L.bw, 8, { isStatic:true, friction:.2, restitution:.05 }); Composite.add(engine.world, gate); }
+  if (on && !gate){ gate = Bodies.rectangle(L.bx + L.bw/2, L.gateY + 20, L.bw, 40, { isStatic:true, friction:.2, restitution:.05 }); Composite.add(engine.world, gate); }
   else if (!on && gate){ Composite.remove(engine.world, gate); gate = null; }
 }
 function rebuild(){
@@ -389,11 +390,11 @@ function spawnMarble(name, color, house, login){
   return mb;
 }
 let flashLine = null;
-function join(login, display, color){
+function join(login, display, color, fake){
   if (state !== "open") return;
   login = login.toLowerCase();
   if (entrants.has(login) || entrants.size >= CFG.maxMarbles) return;
-  entrants.set(login, { name: display || login, color });
+  entrants.set(login, { name: display || login, color, fake: !!fake });
   spawnMarble(display || login, normColor(color), false, login);
   flashLine = { text: "+ " + (display || login), until: performance.now() + 1600 };
   updateStatus();
@@ -402,6 +403,8 @@ function join(login, display, color){
 // ================================================================ flow
 function open(secs){
   if (state === "drop") return;
+  round++;
+  clearTimeout(reveal.t);
   hideSlap(); hideBadge(); hideBoard();
   shuffleCrates(); rebuild();
   entrants.clear(); winner = null; winSlot = -1;
@@ -413,24 +416,34 @@ function drop(){
   if (state !== "open") return;
   state = "drop";
   dropStart = 0;   // the clock starts when the gate actually opens, never carried over from last round
-  const need = Math.max(0, CFG.minMarbles - marbles.length);
+  const need = Math.max(0, Math.max(1, CFG.minMarbles) - marbles.length);
   for (let i = 0; i < need; i++) spawnMarble("HOUSE", null, true);
   updateStatus();
-  setTimeout(() => { setGate(false); dropStart = performance.now(); clunk(); }, need ? 900 : 250);
+  const r = round;
+  setTimeout(() => {
+    if (r !== round || state !== "drop") return;   // round was reset/reopened in the meantime
+    setGate(false); dropStart = performance.now(); clunk();
+  }, need ? 900 : 250);
 }
 function land(mb, slot){
   mb.landed = slot; slotCounts[slot]++;
   if (winner) return;
   winner = mb; winSlot = slot;
   chord([0, 2, 4, 7], .1);
-  setTimeout(reveal, 2200);
+  const r = round;
+  setTimeout(() => { if (r === round) reveal(); }, 2200);
 }
 function reveal(){
-  if (state !== "drop") return;
+  if (state !== "drop" || !winner) return;
+  // the call always matches where the winning marble visibly sits
+  if (winner.position.y > L.slotTop){
+    const now = slotOf(winner.position.x);
+    if (now !== winSlot){ slotCounts[winSlot] = Math.max(0, slotCounts[winSlot] - 1); slotCounts[now]++; winSlot = now; }
+  }
   state = "result";
   const crate = crates[winSlot];
   const pts = store.get("board", {});
-  for (const [login, e] of entrants){ const p = pts[login] || (pts[login] = { name:e.name, digs:0, picks:0 }); p.name = e.name; p.digs++; }
+  for (const [login, e] of entrants){ if (e.fake) continue; const p = pts[login] || (pts[login] = { name:e.name, digs:0, picks:0 }); p.name = e.name; p.digs++; }
   if (!winner.house && winner.login && pts[winner.login]) pts[winner.login].picks++;
   store.set("board", pts);
   const hist = store.get("history", []);
@@ -453,6 +466,7 @@ function reveal(){
   reveal.t = setTimeout(() => { hideSlap(); showBadge(); }, CFG.resultSeconds * 1000);
 }
 function reset(){
+  round++;
   clearTimeout(reveal.t); hideSlap(); hideBoard();
   state = "idle"; entrants.clear(); winner = null; winSlot = -1;
   shuffleCrates(); rebuild(); updateStatus();
@@ -524,20 +538,36 @@ function slapSound(){
 // ================================================================ loop
 let last = performance.now(), acc = 0, statusT = 0;
 const STEP = 1000 / 120;
+function slotOf(x){ return Math.max(0, Math.min(L.N - 1, Math.floor((x - L.bx) / L.slotW))); }
 function frame(now){
+  try { tick(now); } catch (e){ console.error("[cratedig]", e); }
+  requestAnimationFrame(frame);   // never let one bad frame freeze the overlay on stream
+}
+function tick(now){
   const dt = Math.min(50, now - last); last = now;
   noteBudget = Math.min(6, noteBudget + dt * .025);
   acc += dt;
   while (acc >= STEP){ Engine.update(engine, STEP); acc -= STEP; }
+  // guards: nothing slips under the closed gate, nothing escapes the board
+  for (const mb of marbles){
+    const { x, y } = mb.position;
+    const lost = !isFinite(x) || !isFinite(y) || x < L.bx - 40 || x > L.bx + L.bw + 40 || y > L.floorY + 40;
+    const leaked = gate && y > L.gateY + 10;
+    if (lost || leaked){
+      Body.setPosition(mb, { x: L.bx + L.r * 2 + Math.random() * (L.bw - L.r * 4), y: (gate ? L.gateY : L.well.y) - L.r * 2 });
+      Body.setVelocity(mb, { x: 0, y: 0 });
+    }
+  }
   if (state === "open"){
     statusT += dt; if (statusT > 200){ statusT = 0; updateStatus(); }
     if (now >= openUntil) drop();
   }
   if (state === "drop" && dropStart){
-    const lockY = L.slotTop + L.r * 1.2;
+    // lock a marble in only once it's down near the slot floor, so it can't hop a divider after being called
+    const lockY = Math.max(L.slotTop + L.r * 1.2, L.floorY - L.r * 2.4);
     for (const mb of marbles){
       if (mb.landed >= 0) continue;
-      if (mb.position.y > lockY){ land(mb, Math.max(0, Math.min(L.N - 1, Math.floor((mb.position.x - L.bx) / L.slotW)))); continue; }
+      if (mb.position.y > lockY){ land(mb, slotOf(mb.position.x)); continue; }
       const sp = Math.hypot(mb.velocity.x, mb.velocity.y);
       mb.still = sp < .15 ? mb.still + dt : 0;
       if (mb.still > 700){
@@ -550,12 +580,11 @@ function frame(now){
     // failsafe: 30s after the gate opened with nothing landed, the lowest marble wins the slot it's above
     if (!winner && now - dropStart > 30000 && marbles.length){
       const low = marbles.reduce((a, b) => b.position.y > a.position.y ? b : a);
-      land(low, Math.max(0, Math.min(L.N - 1, Math.floor((low.position.x - L.bx) / L.slotW))));
+      land(low, slotOf(low.position.x));
     }
     statusT += dt; if (statusT > 300){ statusT = 0; updateStatus(); }
   }
   draw(now);
-  requestAnimationFrame(frame);
 }
 
 function draw(now){
@@ -641,25 +670,34 @@ function draw(now){
 }
 
 // ================================================================ twitch chat (read-only, anonymous — no login, no token)
-let ws = null, wsTries = 0;
+let ws = null, wsTries = 0, lastRx = Date.now();
+// watchdog: Twitch pings about every 5 min; if we hear nothing for 7, the socket is dead — reconnect
+setInterval(() => { if (ws && Date.now() - lastRx > 7 * 60 * 1000){ lastRx = Date.now(); try { ws.close(); } catch(e){} } }, 30000);
 function chat(){
   const chan = CFG.channel.toLowerCase().replace(/^#/, "");
+  lastRx = Date.now();
   ws = new WebSocket("wss://irc-ws.chat.twitch.tv:443");
   ws.onopen = () => { ws.send("CAP REQ :twitch.tv/tags"); ws.send("PASS SCHMOOPIIE"); ws.send("NICK justinfan" + (10000 + Math.random() * 80000 | 0)); ws.send("JOIN #" + chan); };
   ws.onmessage = ev => {
+    lastRx = Date.now();
     for (const raw of ev.data.split("\r\n")){
       if (!raw) continue;
       if (raw.startsWith("PING")){ ws.send("PONG :tmi.twitch.tv"); continue; }
+      if (/^(?:@\S+ )?:tmi\.twitch\.tv RECONNECT/.test(raw)){ ws.close(); return; }
       if (raw.includes(" JOIN #")){ wsTries = 0; $("chatState").textContent = "live on #" + chan; }
-      const m = raw.match(/^(?:@(\S+) )?:(\w+)!\S+ PRIVMSG #\S+ :(.*)$/);
-      if (m) onChat(m[2], parseTags(m[1] || ""), m[3]);
+      handleLine(raw);
     }
   };
   ws.onclose = () => { $("chatState").textContent = "reconnecting…"; setTimeout(chat, Math.min(15000, 1000 * 2 ** wsTries++)); };
 }
+function handleLine(raw){
+  const m = raw.match(/^(?:@(\S+) )?:(\w+)!\S+ PRIVMSG #\S+ :(.*)$/);
+  if (m) onChat(m[2], parseTags(m[1] || ""), m[3]);
+}
 function parseTags(s){ const t = {}; s.split(";").forEach(kv => { const i = kv.indexOf("="); t[kv.slice(0, i)] = kv.slice(i + 1); }); return t; }
 function onChat(login, tags, msg){
-  const lower = msg.trim().toLowerCase();
+  // 7TV/Chatterino tack invisible characters onto repeated messages so Twitch accepts them — strip them
+  const lower = msg.replace(/[\u{E0000}-\u{E007F}\u034F\u200B-\u200F\u2060-\u2064\uFEFF\u00AD]/gu, "").trim().toLowerCase();
   const display = (tags["display-name"] || login).replace(/\\s/g, " ");
   if (lower === "!dig" || lower.startsWith("!dig ")){ join(login, display, tags.color); return; }
   if (!lower.startsWith("!crate")) return;
@@ -696,7 +734,7 @@ function fakes(n){
   const colors = ["#1E90FF","#FF7F50","#9ACD32","#DAA520","#8A2BE2","#00FF7F","#FF69B4","#5F9EA0","#B22222","#2E8B57"];
   for (let i = 0; i < n; i++){
     const nm = FAKE[fakeN % FAKE.length] + (fakeN >= FAKE.length ? fakeN : ""); fakeN++;
-    setTimeout(() => join(nm, nm, colors[Math.random() * colors.length | 0]), i * 140);
+    setTimeout(() => join(nm, nm, colors[Math.random() * colors.length | 0], true), i * 140);
   }
 }
 addEventListener("keydown", e => {
@@ -706,8 +744,8 @@ addEventListener("keydown", e => {
 });
 addEventListener("pointerdown", () => ac());
 let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (state === "idle" || state === "result") rebuild(); }, 200); });
-window.crateDig = { command, join, get state(){ return state; },
-  get debug(){ return { winSlot, winnerSlotNow: winner ? Math.floor((winner.position.x - L.bx) / L.slotW) : null, sinceGate: dropStart ? Math.round(performance.now() - dropStart) : null }; } };
+window.crateDig = { command, join, handleLine, get state(){ return state; },
+  get debug(){ return { winSlot, winnerSlotNow: winner ? slotOf(winner.position.x) : null, gateClosed: !!gate, marbles: marbles.length, round, sinceGate: dropStart ? Math.round(performance.now() - dropStart) : null }; } };
 
 // ================================================================ boot
 lastPick = store.get("last", null);

@@ -14,6 +14,12 @@ A chat-played marble game for G-REX's stream. Chat types `!dig` to load a marble
 
 The page reads chat anonymously. There's no login, token, or bot account.
 
+## Pre-stream check (30 seconds)
+
+1. In OBS, right-click the source → **Properties** → **Refresh cache of current page** (picks up any changes).
+2. Type `!crate test 5` in chat, then `!crate go`. If marbles drop, chat is connected. Test marbles never count on the leaderboard.
+3. Type `!crate reset`. You're ready.
+
 ## Commands
 
 Viewers:
