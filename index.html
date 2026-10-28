@@ -104,7 +104,16 @@ let round = 0;   // bumps on every open/reset; any timer from an older round see
 const entrants = new Map();
 
 const store = {
-  get(k, d){ try { const v = localStorage.getItem("cratedig." + k); return v ? JSON.parse(v) : d; } catch(e){ return d; } },
+  get(k, d){
+    try {
+      const v = localStorage.getItem("cratedig." + k); if (!v) return d;
+      const x = JSON.parse(v);
+      // a corrupted save must never break a round: wrong shape = start fresh
+      if (Array.isArray(d)) return Array.isArray(x) ? x : d;
+      if (d && typeof d === "object") return x && typeof x === "object" && !Array.isArray(x) ? x : d;
+      return x ?? d;
+    } catch(e){ return d; }
+  },
   set(k, v){ try { localStorage.setItem("cratedig." + k, JSON.stringify(v)); } catch(e){} }
 };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
@@ -402,14 +411,15 @@ function join(login, display, color, fake){
 
 // ================================================================ flow
 function open(secs){
-  if (state === "drop") return;
+  if (state === "drop" || state === "open") return;   // already running: a double-sent !crate open must not wipe entries
+  secs = Number.isFinite(secs) && secs > 0 ? Math.min(600, Math.max(5, secs)) : CFG.openSeconds;
   round++;
   clearTimeout(reveal.t);
   hideSlap(); hideBadge(); hideBoard();
   shuffleCrates(); rebuild();
   entrants.clear(); winner = null; winSlot = -1;
   dropStart = 0;
-  state = "open"; openUntil = performance.now() + (secs || CFG.openSeconds) * 1000;
+  state = "open"; openUntil = performance.now() + secs * 1000;
   updateStatus();
 }
 function drop(){
@@ -456,7 +466,9 @@ function reveal(){
   $("sE").textContent = crate.era;
   $("sB").innerHTML = winner.house ? `THE HOUSE CALLED THIS ONE` : `CALLED BY ${esc(winner.who).toUpperCase()}&nbsp;<span class="dim">·</span>&nbsp;+${CFG.pickPoints}`;
   const nm = $("sN"); nm.style.fontSize = "";
+  const r = round;
   requestAnimationFrame(() => {
+    if (r !== round || state !== "result") return;   // a new round started before this frame: don't slap last round's tape on it
     const max = W * .74, w = nm.scrollWidth;
     if (w > max) nm.style.fontSize = (parseFloat(getComputedStyle(nm).fontSize) * max / w) + "px";
     $("slap").classList.add("on"); slapSound();
@@ -589,6 +601,7 @@ function tick(now){
 
 function draw(now){
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.globalAlpha = 1; ctx.shadowBlur = 0; ctx.globalCompositeOperation = "source-over";
   ctx.clearRect(0, 0, W, H);
   const showWin = winSlot >= 0 && (state === "drop" || state === "result");
 
@@ -697,11 +710,15 @@ function handleLine(raw){
 function parseTags(s){ const t = {}; s.split(";").forEach(kv => { const i = kv.indexOf("="); t[kv.slice(0, i)] = kv.slice(i + 1); }); return t; }
 function onChat(login, tags, msg){
   // 7TV/Chatterino tack invisible characters onto repeated messages so Twitch accepts them — strip them
-  const lower = msg.replace(/[\u{E0000}-\u{E007F}\u034F\u200B-\u200F\u2060-\u2064\uFEFF\u00AD]/gu, "").trim().toLowerCase();
+  let lower = msg.replace(/[\u{E0000}-\u{E007F}\u034F\u200B-\u200F\u2060-\u2064\uFEFF\u00AD]/gu, "").trim().toLowerCase();
+  // replying to someone puts "@theirname " in front of the message
+  if (tags["reply-parent-msg-id"]) lower = lower.replace(/^@\S+\s+/, "");
   const display = (tags["display-name"] || login).replace(/\\s/g, " ");
   if (lower === "!dig" || lower.startsWith("!dig ")){ join(login, display, tags.color); return; }
-  if (!lower.startsWith("!crate")) return;
-  const isAdmin = tags.mod === "1" || /(^|,)broadcaster\//.test(tags.badges || "") || ADMINS.has(login.toLowerCase());
+  if (!/^!crate(\s|$)/.test(lower)) return;
+  // shared chat: messages relayed from another channel never get control, even from that channel's mods
+  const foreign = tags["source-room-id"] && tags["room-id"] && tags["source-room-id"] !== tags["room-id"];
+  const isAdmin = !foreign && (tags.mod === "1" || /(^|,)(broadcaster|lead_moderator)\//.test(tags.badges || "") || ADMINS.has(login.toLowerCase()));
   if (!isAdmin) return;
   const [, cmd = "", arg = ""] = lower.split(/\s+/);
   command(cmd, arg);
