@@ -56,27 +56,3 @@ Edit `crates.js` on GitHub (pencil icon) → commit → wait about a minute → 
 Open `https://nobeatsattached.github.io/createdig/?demo=1`, click the page once, then use these keys: **O** open · **T** +5 fake chatters · **G** drop · **S** shuffle · **L** leaderboard · **R** reset · **H** hide.
 
 URL options: `?channel=someone` reads a different chat · `?sound=0` mutes · `?crates=5` sets the slot count.
-
----
-
-# ASSEMBLY LINE
-
-A second game on the same engine: chat builds a whole beat in 5 drops (TEMPO → STYLE → SAMPLE → DRUMS → TWIST). Whoever's marble calls a stage is that stage's **FOREMAN**, and the finished WORK ORDER credits everyone on the line.
-
-**Live:** https://nobeatsattached.github.io/createdig/assembly.html (add it as its own Browser source, 1920×1080)
-
-Chat: `!work` gets you on the line for the whole shift, so you get a marble every stage automatically. `!in`, `!punch` and `!clockin` also work.
-
-| Command (mods) | What it does |
-|---|---|
-| `!line start` | New shift (new beat). Clears the crew and opens stage 1 |
-| `!line go` | Drop now (otherwise it drops on its own after 30s) |
-| `!line next` | Open the next stage. Won't skip a stage that hasn't locked yet |
-| `!line redo` | Re-run the current stage |
-| `!line credits` | Show the finished WORK ORDER (also shows on its own after the last stage) |
-| `!line order` | Bring back the small work-order list |
-| `!line shuffle` | Re-roll the current stage's slots |
-| `!line board` | All-time leaderboard (separate from Crate Dig's) |
-| `!line clear` · `!line reset` · `!line hide` / `!line show` · `!line test 10` · `!line wipe confirm` | Same as Crate Dig |
-
-Stages, slots, and the random {COUNTRY} / {SHOW} lists live in `assembly.js`.
